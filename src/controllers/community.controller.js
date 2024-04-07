@@ -1,172 +1,320 @@
-import Community from '../models/community.model.js'
+import jwt from 'jsonwebtoken';
+import { Snowflake } from '@theinternetfolks/snowflake';
+import communityModel from '../models/community.model.js';
+import userModel from '../models/user.model.js';
+import memberModel from '../models/member.model.js';
+import config from '../config/index.js';
 
-export const createCommunity = async (req, res) => {
+const createCommunity = async (req, res) => {
     try {
-        const { name } = req.body;
-        const slug = name.toLowerCase().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-');
+        const authHeader = req.headers.authorization;
+        const bearer_token = authHeader && authHeader.split(' ')[1];
+        const name = req.body.name;
 
-        const ownerId = req.user._id;
-
-        const community = await Community.create({
-            name,
-            slug,
-            owner: ownerId,
+        jwt.verify(bearer_token, config.JWT_SECRET, async (err, tokenData) => {
+            if (err) {
+                res.send('You have not access.');
+            } else {
+                if (name.length < 2) {
+                    res.send('Name should contain minimum 2 characters.');
+                } else {
+                    const id = Snowflake.generate(); // Generate Snowflake ID
+                    const slug = name.toLowerCase().replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-') + Snowflake.generate();
+                    const new_community = new communityModel({
+                        "id": id,
+                        "name": name,
+                        "slug": slug,
+                        "owner": tokenData,
+                        "created_at": new Date(),
+                        "updated_at": new Date(),
+                    });
+                    new_community.save().then(result => {
+                        const response = {
+                            "status": true,
+                            "content": {
+                                "data": {
+                                    "id": result["id"],
+                                    "name": result["name"],
+                                    "slug": result["slug"],
+                                    "owner": result["owner"],
+                                    "created_at": result["created_at"],
+                                    "updated_at": result["updated_at"]
+                                }
+                            }
+                        }
+                        res.send(response);
+                    }).catch(err => {
+                        console.log(err);
+                        res.send("Something went wrong.")
+                    });
+                }
+            }
         });
-
-        const adminRole = await Role.findOne({ name: 'Community Admin' });
-
-        const member = await Member.create({
-            community: community._id,
-            user: ownerId,
-            role: adminRole._id,
-        });
-
-        res.status(201).json({
-            message: 'Community created successfully',
-            data: {
-                community,
-                member,
-            },
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({
-            message: 'Server Error',
-        });
-    }
-}
-
-
-
-export const  getAllCommunities = async (req, res) => {
-    const page = Number(req.query.page) || 1;
-    const perPage = 10;
-    const skip = perPage * (page - 1);
-
-    const [communities, total] = await Promise.all([
-        Community.find()
-            .populate('owner', 'id name')
-            .skip(skip)
-            .limit(perPage),
-        Community.countDocuments(),
-    ]);
-
-    const totalPages = Math.ceil(total / perPage);
-
-    res.json({
-        meta: {
-            total,
-            pages: totalPages,
-            page,
-        },
-        data: communities,
-    });
-}
-
-
-
-export const getAllMembers = async (req, res) => {
-    try {
-        const perPage = 10;
-        const page = parseInt(req.query.page) || 1;
-        const communityId = req.params.id;
-
-        const totalCount = await Member.countDocuments({ community: communityId });
-        const totalPages = Math.ceil(totalCount / perPage);
-        const members = await Member.find({ community: communityId })
-            .skip((perPage * page) - perPage)
-            .limit(perPage)
-            .populate('user', 'id name')
-            .populate('role')
-            .lean();
-
-        res.status(200).json({
-            meta: {
-                total: totalCount,
-                pages: totalPages,
-                page: page,
-            },
-            data: members,
-        });
-    } catch (err) {
-        console.error(err);
+    } catch (error) {
+        console.error(error);
         res.status(500).json({ message: 'Server Error' });
     }
-}
+};
 
-export const getMyOwnedCommunity = async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
+
+const getAllCommunities = async (req, res) => {
     try {
-        const userId = req.user.toObject()._id;
-        const count = await Community.countDocuments({ owner: userId });
-        const communities = await Community.find({ owner: userId })
-            .select('password') 
-            .populate({ path: 'owner', select: 'id name' })
-            .skip(skip)
-            .limit(limit)
-            .lean();
-
-        const totalPages = Math.ceil(count / limit);
-        const meta = {
-            total: count,
-            pages: totalPages,
-            page: page,
-        };
-
-        res.status(200).json({ meta, communities });
-
-    } catch (err) {
-        res.status(500).json({
-            message: "failed"
-        })
-    }
-
-}
-
-
-
-export const  getMyJoinedCommunity = async (req, res) => {
-    const { page = 1, limit = 10 } = req.query;
-    const userId = req.user._id;
-
-    try {
-        const members = await Member.find({ user: userId })
-            .populate({
-                path: 'community',
-                select: '_id name owner',
-                populate: {
-                    path: 'owner',
-                    select: '_id name',
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        const data = await communityModel.find().skip(skip).limit(limit);
+        let response = [];
+        for (let i = 0; i < data.length; i++) {
+            const owner = await userModel.findOne({ "id": data[i].owner });
+            const x = {
+                "id": data[i].id,
+                "name": data[i].name,
+                "slug": data[i].slug,
+                "owner": {
+                    "id": data[i].owner,
+                    "name": owner['name']
                 },
-            })
-            .populate({
-                path: 'user',
-                select: '_id name',
-            })
-            .populate({
-                path: 'role',
-                select: '_id name',
-            })
-            .skip((page - 1) * limit)
-            .limit(parseInt(limit))
-            .exec();
-
-        const total = await Member.countDocuments({ user: userId });
+                "created_at": data[i].created_at,
+                "updated_at": data[i].updated_at
+            }
+            response.push(x);
+        }
+        const total = await communityModel.countDocuments();
         const pages = Math.ceil(total / limit);
-
-        res.status(200).json({
-            data: members,
-            meta: {
-                total,
-                pages,
-                page: parseInt(page),
-            },
-        });
+        response = {
+            "status": true,
+            "content": {
+                "meta": {
+                    "total": total,
+                    "pages": pages,
+                    "page": page
+                },
+                "data": response
+            }
+        }
+        res.send(response);
     } catch (err) {
         console.error(err);
-        res.status(500).json({ message: 'Internal server error' });
+        res.send("Somethings went wrong.");
     }
-}
+};
 
+const createMember = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const bearer_token = authHeader && authHeader.split(' ')[1];
+        const community = req.body.community;
+        const user = req.body.user;
+        const role = req.body.role;
+
+        jwt.verify(bearer_token, secretKey, async (err, tokenData) => {
+            if (err) {
+                res.send("You have not access.");
+            } else {
+                const new_member = new memberModel({
+                    'id': uuid.v4(),
+                    'community': community,
+                    'user': user,
+                    'role': role,
+                    'created_at': new Date()
+                });
+                try {
+                    const community_data = await communityModel.findOne({ "owner": tokenData });
+                    if (community_data) {
+                        new_member.save().then(result => {
+                            const response = {
+                                "status": true,
+                                "content": {
+                                    "data": {
+                                        "id": result.id,
+                                        "community": result.community,
+                                        "user": result.user,
+                                        "role": result.role,
+                                        "created_at": result.created_at
+                                    }
+                                }
+                            }
+                            res.send(response);
+                        }).catch(err => {
+                            console.log(err);
+                            res.send("Something went wrong.")
+                        });
+                    } else {
+                        res.send("NOT_ALLOWED_ACCESS")
+                    }
+                } catch (err) {
+                    console.log(err);
+                    res.send("Somthing wents wrong.")
+                }
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+const getAllMembersByCommunityId = async (req, res) => {
+    try {
+        const communityId = req.params.id;
+        let data = [];
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 10;
+        const skip = (page - 1) * limit;
+        const members = await memberModel.find({ "community": communityId }).skip(skip).limit(limit);
+        for (let i = 0; i < members.length; i++) {
+            const user = await userModel.findOne({ "id": members[i].user });
+            const user_name = user.name;
+            const role = await roleModel.findOne({ "id": members[i].role });
+            const role_name = role.name;
+            const x = {
+                "id": members[i].id,
+                "community": members[i].community,
+                "user": {
+                    "id": members[i].user,
+                    "name": user_name
+                },
+                "role": {
+                    "id": members[i].role,
+                    "name": role_name
+                },
+                "created_at": members[i].created_at
+            }
+            data.push(x);
+        }
+        const total = await memberModel.countDocuments();
+        const pages = Math.ceil(total / limit);
+        data = {
+            "status": true,
+            "content": {
+                "meta": {
+                    "total": total,
+                    "pages": pages,
+                    "page": page
+                },
+                "data": data
+            }
+        }
+        res.send(data);
+    } catch (err) {
+        console.error(err);
+        res.send("Somethings went wrong.");
+    }
+};
+
+const getMyOwnedCommunities = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const bearer_token = authHeader && authHeader.split(' ')[1];
+        jwt.verify(bearer_token, secretKey, async (err, tokenData) => {
+            if (err) {
+                res.send("You have not access.");
+            } else {
+                try {
+                    const page = parseInt(req.query.page) || 1;
+                    const limit = parseInt(req.query.limit) || 10;
+                    const skip = (page - 1) * limit;
+                    const myOwnedCommunity = await communityModel.find({ "owner": tokenData }).skip(skip).limit(limit);
+                    let data = [];
+                    for (let i = 0; i < myOwnedCommunity.length; i++) {
+                        const x = {
+                            "id": myOwnedCommunity[i].id,
+                            "name": myOwnedCommunity[i].name,
+                            "slug": myOwnedCommunity[i].slug,
+                            "owner": myOwnedCommunity[i].owner,
+                            "created_at": myOwnedCommunity[i].created_at,
+                            "updated_at": myOwnedCommunity[i].updated_at
+                        }
+                        data.push(x);
+                    }
+                    const total = await communityModel.countDocuments();
+                    const pages = Math.ceil(total / limit);
+                    const response = {
+                        "status": true,
+                        "content": {
+                            "meta": {
+                                "total": total,
+                                "pages": pages,
+                                "page": page
+                            },
+                            "data": data
+                        }
+                    }
+                    res.send(response);
+                } catch (err) {
+                    console.error(err);
+                    res.send("Something went wrong.");
+                }
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+const getMyJoinedCommunities = async (req, res) => {
+    try {
+        const authHeader = req.headers.authorization;
+        const bearer_token = authHeader && authHeader.split(' ')[1];
+        jwt.verify(bearer_token, secretKey, async (err, tokenData) => {
+            if (err) {
+                res.send("You have not access.");
+            } else {
+                try {
+                    const page = parseInt(req.query.page) || 1;
+                    const limit = parseInt(req.query.limit) || 10;
+                    const skip = (page - 1) * limit;
+                    const myMembership = await memberModel.find({ "user": tokenData }).skip(skip).limit(limit);
+                    let data = [];
+                    for (let i = 0; i < myMembership.length; i++) {
+                        const community_data = await communityModel.findOne({ "id": myMembership[i].community });
+                        let owner_name = await userModel.findOne({ "id": community_data.owner });
+                        owner_name = owner_name.name;
+                        const x = {
+                            "id": community_data.id,
+                            "name": community_data.name,
+                            "slug": community_data.slug,
+                            "owner": {
+                                "id": community_data.owner,
+                                "name": owner_name,
+                            },
+                            "created_at": community_data.created_at,
+                            "updated_at": community_data.updated_at
+                        }
+                        data.push(x);
+                    }
+                    const total = await memberModel.countDocuments();
+                    const pages = Math.ceil(total / limit);
+                    const response = {
+                        "status": true,
+                        "content": {
+                            "meta": {
+                                "total": total,
+                                "pages": pages,
+                                "page": page
+                            },
+                            "data": data
+                        }
+                    }
+                    res.send(response);
+                } catch (err) {
+                    console.error(err);
+                    res.send("Something went wrong.");
+                }
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+export   {
+    createCommunity,
+    getAllCommunities,
+    createMember,
+    getAllMembersByCommunityId,
+    getMyOwnedCommunities,
+    getMyJoinedCommunities
+};
