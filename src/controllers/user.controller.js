@@ -1,4 +1,3 @@
-import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 import User from "../models/user.model.js";
 import config from "../config/index.js";
@@ -6,7 +5,7 @@ import { Snowflake } from "@theinternetfolks/snowflake";
 
 const generateToken = (id) => {
   return jwt.sign({ id }, config.JWT_SECRET, {
-    expiresIn: config.JWT_EXPIRATION,
+    expiresIn: '30d',
   });
 };
 
@@ -91,10 +90,9 @@ export const signIn = async (req, res) => {
 
     const token = generateToken(user._id);
 
-    // Set access_token cookie
     res.cookie("access_token", token, {
       httpOnly: true,
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: 30 * 24 * 60 * 60 * 1000, 
     });
 
     res.status(200).json({
@@ -116,37 +114,41 @@ export const signIn = async (req, res) => {
   }
 };
 
+
 export const profile = async (req, res) => {
   try {
-    const token = req.cookies.access_token;
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
+
     if (!token) {
-      return res.status(401).json({
-        status: false,
-        message: "Unauthorized: Access token is missing",
-      });
+      return res.status(401).json({ status: false, message: "Unauthorized: Access token is missing" });
     }
 
-    const decodedToken = jwt.verify(token, config.JWT_SECRET);
-    const userId = decodedToken.id;
+    jwt.verify(token, config.JWT_SECRET, async (err, decodedToken) => {
+      if (err) {
+        return res.status(403).json({ status: false, message: "Forbidden: Invalid token" });
+      }
 
-    const user = await User.findById(userId).select("-password");
+      const userId = decodedToken.id;
+      const user = await User.findById(userId).select("-password");
 
-    if (!user) {
-      return res.status(404).json({ status: false, message: "User not found" });
-    }
+      if (!user) {
+        return res.status(404).json({ status: false, message: "User not found" });
+      }
 
-    res.status(200).json({
-      status: true,
-      content: {
-        data: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          created_at: user.createdAt,
+      res.status(200).json({
+        status: true,
+        content: {
+          data: {
+            id: user._id,
+            name: user.name,
+            email: user.email,
+            created_at: user.createdAt,
+          },
         },
-      },
+      });
     });
   } catch (error) {
-    res.status(500).json({ status: false, message: error.message });
+    res.status(500).json({ status: false, message: "Internal Server Error" });
   }
 };
