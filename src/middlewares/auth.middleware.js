@@ -10,7 +10,7 @@ const Auth = async (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, config.JWT_SECRET);
-    const user = await User.findById(decoded.id);
+    const user = await User.findById(decoded.userId);
     if (!user) {
       throw new Error('User not found');
     }
@@ -22,5 +22,6 @@ const Auth = async (req, res, next) => {
     res.status(401).json({ error: 'Unauthorized', message: error.message });
   }
 };
+
 
 export default Auth;
