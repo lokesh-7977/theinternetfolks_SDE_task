@@ -65,6 +65,7 @@ export const signUp = async (req, res) => {
 
 
 
+
 export const signIn = async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
@@ -115,40 +116,42 @@ export const signIn = async (req, res) => {
 };
 
 
+
 export const profile = async (req, res) => {
   try {
     const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.split(' ')[1];
+    const bearerToken = authHeader && authHeader.split(' ')[1];
 
-    if (!token) {
+    if (!bearerToken) {
       return res.status(401).json({ status: false, message: "Unauthorized: Access token is missing" });
     }
 
-    jwt.verify(token, config.JWT_SECRET, async (err, decodedToken) => {
-      if (err) {
-        return res.status(403).json({ status: false, message: "Forbidden: Invalid token" });
-      }
+    const tokenData = jwt.verify(bearerToken, config.JWT_SECRET);
+    const userId = tokenData.id;
+    const user = await User.findById(userId).select("-password");
 
-      const userId = decodedToken.id;
-      const user = await User.findById(userId).select("-password");
+    if (!user) {
+      return res.status(404).json({ status: false, message: "User not found" });
+    }
 
-      if (!user) {
-        return res.status(404).json({ status: false, message: "User not found" });
-      }
+    const response = {
+      status: true,
+      data: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        createdAt: user.createdAt,
+      },
+    };
 
-      res.status(200).json({
-        status: true,
-        content: {
-          data: {
-            id: user._id,
-            name: user.name,
-            email: user.email,
-            created_at: user.createdAt,
-          },
-        },
-      });
-    });
-  } catch (error) {
+    res.status(200).json(response);
+  } catch (err) {
+    if (err.name === 'JsonWebTokenError') {
+      return res.status(403).json({ status: false, message: "Forbidden: Invalid token" });
+    }
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({ status: false, message: "Unauthorized: Token expired" });
+    }
     res.status(500).json({ status: false, message: "Internal Server Error" });
   }
 };
