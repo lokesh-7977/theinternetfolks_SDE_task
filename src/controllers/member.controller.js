@@ -1,64 +1,71 @@
-import Member from "../models/member.model.js";
+import Member from "../models/role.model.js";
 import Role from "../models/role.model.js";
 
-const hasRole = async (communityId, userId, roleId) => {
-  return await Member.exists({ community: communityId, user: userId, role: roleId });
+const isRole = async (communityId, userId, roleId) => {
+  const isRole = await Member.findOne({
+    community: communityId,
+    user: userId,
+    role: roleId,
+  });
+  return isRole;
 };
 
 export const addMember = async (req, res) => {
   try {
     const { community, user, role } = req.body;
 
-    if (!community || !user || !role) {
-      return res.status(400).json({ message: "Please provide all required fields" });
-    }
+    const adminRole = await Role.findOne({  name: "Community Admin" });
 
-    const isAdminOrModerator = await hasRole(community, req.user.id, { $in: ["Community Admin"] });
-    if (!isAdminOrModerator) {
+    if ((!await isRole(community, req.user.toObject()._id, adminRole))) {
       return res.status(403).json({ message: "Not allowed access" });
     }
 
-    const newMember = await Member.create({ community, user, role });
+    const memberRole = await Role.findOne({ name: "Community Member" });
+
+    const newMember = await Member.create({
+      community,
+      user,
+      role: role,
+    });
 
     res.status(201).json({
       status: true,
       content: {
         data: {
-          id: newMember._id,
-          community: newMember.community,
-          user: newMember.user,
-          role: newMember.role,
-          createdAt: newMember.createdAt,
+          newMember,
         },
       },
     });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server Error", error: err.message });
+    res.status(500).json({
+      message: "Server Error",
+      err : err.message
+    });
   }
 };
-
-
 
 export const deleteMember = async (req, res) => {
   try {
-    const memberId = req.params.id;
+    const moderatorRole = await Role.findOne({ name: "Community Moderator" });
+    const adminRole = await Role.findOne({ name: "Community Admin" });
 
-    const isAdminOrModerator = await hasRole(memberId, req.user.id, { $in: ["Community Admin", "Community Moderator"] });
-    if (!isAdminOrModerator) {
+    if (
+      !(await isRole(req.params.cid, req.user.toObject()._id, adminRole)) &&
+      !(await isRole(req.params.cid, req.user.toObject()._id, moderatorRole))
+    ) {
       return res.status(403).json({ message: "Not allowed access" });
     }
 
-    if (isAdminOrModerator) {
-      await Member.findByIdAndDelete(memberId);
-      res.status(200).json({ status: true });
-    } else {
-      return res.status(403).json({ message: "Not allowed access" });
-    }
+    const member = await Member.findByIdAndDelete(req.params.id).populate(
+      "community"
+    );
+
+    return res.json({ status: true });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: "Server Error", error: err.message });
+    res.status(500).json({
+      message: "Server Error",
+    });
   }
 };
-
-

@@ -1,37 +1,38 @@
 import Role from '../models/role.model.js';
 
 export const createRole = async (req, res) => {
-    const { name } = req.body;
-    if(name.length < 2 ){
-        return res.status(400).json({ status: false, message: "Role name must be at least 2 characters" });
-    }
+  const { name } = req.body;
 
-    if (!name) {
-        return res.status(400).json({ status: false, message: "Role name is required" });
-    }
+  if (!name) {
+      return res.status(400).json({ status: false, message: "Role name is required" });
+  }
 
-    try {
-        const role = new Role({
-            name
-        });
+  try {
+      const existingRole = await Role.findOne({ name });
+      if (existingRole) {
+          return res.status(400).json({ status: false, message: "A role with this name already exists" });
+      }
 
-        await role.save();
+      const role = new Role({
+          name
+      });
 
-        res.status(201).json({
-            status: true,
-            content: {
+      await role.save();
+
+      res.status(201).json({
+          status: true,
+          content: {
               data: {
-                id: role._id,
-                name: role.name,
-                created_at: role.createdAt,
-                updated_at: role.updatedAt
+                  id: role._id,
+                  name: role.name,
+                  created_at: role.createdAt,
+                  updated_at: role.updatedAt
               }
-            }
-        });
-    } catch (error) {
-        res.status(500).json({ status: false, message: error.message });
-    }
-
+          }
+      });
+  } catch (error) {
+      res.status(500).json({ status: false, message: error.message });
+  }
 }
 
 
