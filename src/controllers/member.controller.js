@@ -13,7 +13,7 @@ export const addMember = async (req, res) => {
       return res.status(400).json({ message: "Please provide all required fields" });
     }
 
-    const isAdminOrModerator = await hasRole(community, req.user.id, { $in: ["Community Admin", "Community Moderator"] });
+    const isAdminOrModerator = await hasRole(community, req.user.id, { $in: ["Community Admin"] });
     if (!isAdminOrModerator) {
       return res.status(403).json({ message: "Not allowed access" });
     }
@@ -38,32 +38,27 @@ export const addMember = async (req, res) => {
   }
 };
 
+
+
 export const deleteMember = async (req, res) => {
   try {
-    const moderatorRole = await Role.findOne({ name: "Community Moderator" });
-    const adminRole = await Role.findOne({ name: "Community Admin" });
+    const memberId = req.params.id;
 
-    if (!moderatorRole || !adminRole) {
-      return res.status(500).json({ message: "Server Error: Moderator or Admin role not found" });
-    }
-
-    if (
-      !(await hasRole(req.params.id, req.user.id, adminRole._id)) &&
-      !(await hasRole(req.params.id, req.user.id, moderatorRole._id))
-    ) {
+    const isAdminOrModerator = await hasRole(memberId, req.user.id, { $in: ["Community Admin", "Community Moderator"] });
+    if (!isAdminOrModerator) {
       return res.status(403).json({ message: "Not allowed access" });
     }
 
-    const member = await Member.findById(req.params.id).populate("community");
-    if (!member) {
-      return res.status(404).json({ message: "Member not found" });
+    if (isAdminOrModerator) {
+      await Member.findByIdAndDelete(memberId);
+      res.status(200).json({ status: true });
+    } else {
+      return res.status(403).json({ message: "Not allowed access" });
     }
-
-    await member.remove();
-    return res.json({ message: "Member removed successfully." });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server Error", error: err.message });
   }
 };
+
 

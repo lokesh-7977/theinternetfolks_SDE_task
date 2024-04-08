@@ -40,4 +40,13 @@ app.use("/v1/role",roleRoute);
 app.use("/v1/community",communityRoute);
 app.use("/v1/member",memberRoute);
 
+
+// if Route is not available
+app.all("*", (req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found on the server.",
+  });
+});
+
 export default app;
