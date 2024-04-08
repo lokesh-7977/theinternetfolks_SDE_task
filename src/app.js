@@ -34,8 +34,7 @@ app.get("/health", (req, res) => {
 });
 
 
-
-// Routes actual
+// actual routes
 app.use("/v1/auth",userRoute);
 app.use("/v1/role",roleRoute);
 app.use("/v1/community",communityRoute);

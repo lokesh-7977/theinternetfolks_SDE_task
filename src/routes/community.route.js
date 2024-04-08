@@ -1,19 +1,15 @@
 import express from 'express';
-import { createCommunity,
-    getAllCommunities,
-    createMember,
-    getAllMembersByCommunityId,
-    getMyOwnedCommunities,
-    getMyJoinedCommunities} from '../controllers/community.controller.js';
+import Auth from '../middlewares/auth.middleware.js';
+import { createCommunity, getAllCommunities, getAllMembers , getMyOwnedCommunity ,getMyJoinedCommunity } from '../controllers/community.controller.js';
 
 const router = express.Router();
 
-router.post('/', createCommunity);
+router.post('/',Auth, createCommunity);
 router.get('/', getAllCommunities);
-router.get('/', createMember);
-router.get('/', getAllMembersByCommunityId);
-router.get('/', getMyJoinedCommunities);
-router.get('/', getMyOwnedCommunities);
+router.get('/me/owner', Auth, getMyOwnedCommunity);
+router.get('/:id/members', Auth, getAllMembers);
+router.get('/me/member', Auth, getMyJoinedCommunity);
+
 
 
 

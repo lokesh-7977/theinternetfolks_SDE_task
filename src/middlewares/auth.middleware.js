@@ -19,12 +19,10 @@ const Auth = async (req, res, next) => {
       return res.status(404).json({ status: false, message: "User not found" });
     }
 
-    // Attach user object to request for further use in downstream middleware or routes
     req.user = user;
     req.token = bearerToken;
-
-    // Call next middleware or route handler
     next();
+    
   } catch (err) {
     if (err.name === 'JsonWebTokenError') {
       return res.status(403).json({ status: false, message: "Forbidden: Invalid token" });
