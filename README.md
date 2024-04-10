@@ -1,4 +1,4 @@
-# CommunityHub API - THE INTERNET FOLKS SDE INTERN TASK {002}
+# Community MANAGEMENT API 
 
 ## Overview
 
